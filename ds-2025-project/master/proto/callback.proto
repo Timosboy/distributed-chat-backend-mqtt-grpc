@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package callback;
+
+service CallbackService {
+  rpc SendResult (ResultCallback) returns (Ack);
+}
+
+message ResultCallback {
+  string workerId = 1;
+  string sessionId = 2;
+  string query = 3;
+  string result = 4;
+  string apiKey = 5;
+  string duration = 6;
+  int64 timestamp = 7;
+}
+
+message Ack {
+  string message = 1;
+}

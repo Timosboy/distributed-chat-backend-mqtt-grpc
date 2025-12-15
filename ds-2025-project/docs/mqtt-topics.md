@@ -1,0 +1,4 @@
+- upb/workers/register
+- upb/workers/status
+- upb/workers/tasks
+- upb/logs
