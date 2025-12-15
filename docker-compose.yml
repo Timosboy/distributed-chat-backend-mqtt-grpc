@@ -1,0 +1,68 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    restart: unless-stopped
+    networks:
+      - appnet
+
+  master:
+    build:
+      context: ./ds-2025-project/master
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+      - "50051:50051"
+    secrets:
+      - openai_api_key
+    depends_on:
+      mosquitto:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - appnet
+
+  worker-fake:
+    build:
+      context: ./ds-2025-project/worker-fake
+      dockerfile: Dockerfile
+    environment:
+      WORKER_ID: worker-fake-1
+      MQTT_BROKER: mqtt://mosquitto:1883
+      GRPC_TARGET: master:50051
+    secrets:
+      - openai_api_key
+    depends_on:
+      mosquitto:
+        condition: service_started
+      master:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - appnet
+    volumes:
+      - ./ds-2025-project/master/proto:/master/proto:ro
+
+  frontend:
+    build:
+      context: ./DS-UI
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      master:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - appnet
+
+secrets:
+  openai_api_key:
+    file: ./secrets/openai_api_key.txt
+
+networks:
+  appnet:
+    driver: bridge
