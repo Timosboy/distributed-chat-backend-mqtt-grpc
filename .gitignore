@@ -108,8 +108,7 @@ xcuserdata/
 !*.xcworkspace/contents.xcworkspacedata
 /*.gcno
 **/xcshareddata/WorkspaceSettings.xcsettings
-<<<<<<< HEAD
 
-# End of https://www.toptal.com/developers/gitignore/api/windows,macos,react,xcode,visualstudiocode
-=======
->>>>>>> 1ab5205 (Añadir base al repositorio)
+secrets/
+**/secrets/
+*.txt
