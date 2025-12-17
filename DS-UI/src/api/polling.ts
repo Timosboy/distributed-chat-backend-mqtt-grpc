@@ -11,7 +11,18 @@ export async function pollUntilDone(
 
   while (true) {
     const r = await fetchResult(sessionId);
-    if (r?.status === "done") return r;
+
+    if (!r) {
+      throw new Error("Sesión no encontrada");
+    }
+
+    if (r.status === "DONE") {
+      return r;
+    }
+
+    if (r.status === "FAILED") {
+      throw new Error("La tarea falló en el worker");
+    }
 
     if (Date.now() - started > timeoutMs) {
       throw new Error("Timeout esperando la respuesta del Master");

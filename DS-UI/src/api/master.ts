@@ -12,13 +12,12 @@ export async function submitQuery(
   return res.json();
 }
 
-export type SessionResult = {
-  query?: string;
-  status?: "pending" | "done";
-  result?: string;
-  workerId?: string;
-};
+export type SessionStatus = "PENDING" | "RUNNING" | "DONE" | "FAILED";
 
+export interface SessionResult {
+  status: SessionStatus;
+  result?: string;
+}
 export async function fetchResult(sessionId: string): Promise<SessionResult> {
   const res = await fetch(`${BASE_URL}/result/${sessionId}`);
   if (!res.ok) throw new Error("fetchResult failed");

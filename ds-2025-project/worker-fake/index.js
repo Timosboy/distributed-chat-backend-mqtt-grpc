@@ -8,6 +8,18 @@ const protoLoader = require("@grpc/proto-loader");
 const WORKER_ID = process.env.WORKER_ID || "worker-fake-1";
 const MQTT_BROKER = process.env.MQTT_BROKER || "mqtt://mosquitto:1883";
 const GRPC_TARGET = process.env.GRPC_TARGET || "master:50051";
+
+function emitLog(mqttClient, { sessionId, message }) {
+  const entry = {
+    sessionId,
+    source: "worker",
+    message,
+    timestamp: Date.now(),
+  };
+
+  mqttClient.publish("upb/logs", JSON.stringify(entry));
+}
+
 // =====================
 // MQTT
 // =====================
@@ -47,10 +59,14 @@ mqttClient.on("message", async (topic, message) => {
     if (topic !== "upb/workers/tasks") return;
 
     const task = JSON.parse(message.toString());
+    const { sessionId, query, workerId } = task;
 
     if (task.workerId !== WORKER_ID) return;
 
-    console.log("📥 Tarea recibida:", task.sessionId);
+    emitLog(mqttClient, {
+      sessionId,
+      message: "Tarea recibida",
+    });
 
     // Marcar busy
     mqttClient.publish(
@@ -70,6 +86,11 @@ mqttClient.on("message", async (topic, message) => {
     } catch (err) {
       console.error("No se pudo cargar la OpenAI API Key:", err.message);
     }
+
+    emitLog(mqttClient, {
+      sessionId,
+      message: "Procesando consulta con OpenAI",
+    });
 
     result = await callOpenAI(apiKey, task.model, task.query);
 
@@ -95,6 +116,11 @@ mqttClient.on("message", async (topic, message) => {
       return data.choices?.[0]?.message?.content ?? "";
     }
 
+    emitLog(mqttClient, {
+      sessionId,
+      message: "Resultado generado correctamente",
+    });
+
     try {
       // (Opcional) simular un poquito de demora como el fake anterior
       await new Promise((res) => setTimeout(res, 2000));
@@ -103,6 +129,10 @@ mqttClient.on("message", async (topic, message) => {
       result = await callOpenAI(apiKey, task.model, task.query);
     } catch (err) {
       result = `Error llamando a OpenAI: ${err?.message ?? String(err)}`;
+      emitLog(mqttClient, {
+        sessionId,
+        message: `Error en worker: ${err.message}`,
+      });
     }
 
     const duration = `${((Date.now() - start) / 1000).toFixed(2)}s`;
@@ -121,6 +151,7 @@ mqttClient.on("message", async (topic, message) => {
         if (err) {
           console.error("❌ Error gRPC:", err.message);
         } else {
+          console.log(result);
           console.log("✅ Resultado enviado al Master:", response?.message);
         }
 

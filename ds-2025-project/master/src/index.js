@@ -1,149 +1,217 @@
 const mqtt = require("mqtt");
 const grpc = require("@grpc/grpc-js");
 const protoLoader = require("@grpc/proto-loader");
-// const { v4: uuidv4 } = require("uuid");
 const crypto = require("crypto");
-const uuidv4 = () => crypto.randomUUID();
 const express = require("express");
 
-const fs = require("fs");
+const uuidv4 = () => crypto.randomUUID();
+
+const MQTT_BROKER = "mqtt://mosquitto:1883";
+const GRPC_ADDR = "0.0.0.0:50051";
+
+const app = express();
+app.use(express.json());
+
+const workers = new Map();
+const sessions = new Map();
+const pendingQueue = [];
 
 let mqttClient = null;
 
-// Configuración
-const MQTT_BROKER = "mqtt://mosquitto:1883";
-// const MQTT_BROKER = "mqtt://localhost:21702";
-// const MQTT_BROKER = "mqtt://127.0.0.1:1883";
-const GRPC_PORT = "0.0.0.0:50051";
+/* ===================== LOGS/NEW ===================== */
 
-// Estados en memoria
-const workers = {};
-const sessions = {};
+const sessionLogs = new Map();
 
-// MQTT
+function logEvent({ sessionId, source, message }) {
+  if (!sessionId) {
+    console.log(`[${source}] [system] ${message}`);
+    return;
+  }
+
+  const entry = {
+    sessionId,
+    source,
+    message,
+    timestamp: Date.now(),
+  };
+
+  if (!sessionLogs.has(sessionId)) {
+    sessionLogs.set(sessionId, []);
+  }
+
+  sessionLogs.get(sessionId).push(entry);
+
+  console.log(`[${source}] [${sessionId}] ${message}`);
+}
+
+/* ===================== MQTT ===================== */
 
 function connectMQTT() {
-  console.log("Intentando conectar a MQTT...");
-
   mqttClient = mqtt.connect(MQTT_BROKER, {
     reconnectPeriod: 2000,
     connectTimeout: 5000,
   });
 
-  mqttClient.on("error", (err) => {
-    console.error("Error MQTT:", err.message);
-  });
-
-  mqttClient.on("offline", () => {
-    console.error("TT offline");
-  });
-
-  mqttClient.on("reconnect", () => {
-    console.log("Reintentando conexión MQTT...");
-  });
-
   mqttClient.on("connect", () => {
     console.log("Master conectado a MQTT");
-
     mqttClient.subscribe("upb/workers/register");
     mqttClient.subscribe("upb/workers/status");
+    mqttClient.subscribe("upb/logs");
   });
 
   mqttClient.on("message", (topic, message) => {
     const data = JSON.parse(message.toString());
 
+    if (topic === "upb/logs") {
+      const log = JSON.parse(message.toString());
+
+      logEvent({
+        sessionId: log.sessionId,
+        source: log.source,
+        message: log.message,
+      });
+    }
+
     if (topic === "upb/workers/register") {
-      workers[data.workerId] = { status: "idle", lastSeen: Date.now() };
-      log(`Worker registrado: ${data.workerId}`);
+      workers.set(data.workerId, {
+        status: "idle",
+        lastSeen: Date.now(),
+      });
+      logEvent({
+        sessionId: null,
+        source: "MQTT",
+        message: `Worker registrado: ${data.workerId}`,
+      });
+      tryAssignTasks();
     }
 
     if (topic === "upb/workers/status") {
-      if (workers[data.workerId]) {
-        workers[data.workerId].status = data.status;
-        workers[data.workerId].lastSeen = Date.now();
+      if (workers.has(data.workerId)) {
+        workers.get(data.workerId).status = data.status;
+        workers.get(data.workerId).lastSeen = Date.now();
       }
     }
   });
 }
 
-// gRPC
+/* ===================== gRPC ===================== */
+
 const protoPath = __dirname + "/../proto/callback.proto";
 const packageDef = protoLoader.loadSync(protoPath);
 const grpcObj = grpc.loadPackageDefinition(packageDef);
 const callbackPackage = grpcObj.callback;
 
 function SendResult(call, callback) {
-  const data = call.request;
+  const { sessionId, result, workerId } = call.request;
 
-  sessions[data.sessionId] = {
-    ...sessions[data.sessionId],
-    result: data.result,
-    workerId: data.workerId,
-    status: "done",
-  };
+  if (sessions.has(sessionId)) {
+    sessions.set(sessionId, {
+      status: "DONE",
+      result,
+    });
+  }
 
-  log(`Resultado recibido de ${data.workerId} para sesión ${data.sessionId}`);
+  logEvent({
+    sessionId,
+    source: "master",
+    message: `Resultado recibido de ${workerId}`,
+  });
 
+  if (workers.has(workerId)) {
+    workers.get(workerId).status = "idle";
+  }
+
+  tryAssignTasks();
   callback(null, { message: "ACK" });
 }
 
 const grpcServer = new grpc.Server();
 grpcServer.addService(callbackPackage.CallbackService.service, { SendResult });
 
-grpcServer.bindAsync(
-  GRPC_PORT,
-  grpc.ServerCredentials.createInsecure(),
-  (err, port) => {
-    if (err) {
-      console.error("Error al bindear gRPC:", err);
-      return;
-    }
-    console.log(`gRPC server activo en puerto ${port}`);
-    // NO llamar a start()
-  }
+grpcServer.bindAsync(GRPC_ADDR, grpc.ServerCredentials.createInsecure(), () =>
+  console.log("gRPC activo en 50051")
 );
 
-// API para UI
-const app = express();
-app.use(express.json());
+/* ===================== HTTP API ===================== */
 
 app.post("/query", (req, res) => {
-  const sessionId = uuidv4();
-  const query = req.body.query;
+  const id = uuidv4();
 
-  sessions[sessionId] = { query, status: "pending" };
-  assignTask(sessionId, query);
+  sessions.set(id, {
+    status: "PENDING",
+    result: null,
+  });
 
-  res.json({ sessionId });
+  logEvent({
+    sessionId: id,
+    source: "master",
+    message: "Consulta recibida",
+  });
+
+  pendingQueue.push({
+    sessionId: id,
+    query: req.body.query,
+  });
+
+  tryAssignTasks();
+  res.json({ sessionId: id });
 });
 
 app.get("/result/:id", (req, res) => {
-  res.json(sessions[req.params.id] || {});
+  if (!sessions.has(req.params.id)) {
+    return res.status(404).json({ error: "Not found" });
+  }
+
+  const session = sessions.get(req.params.id);
+  res.json(session);
+});
+
+app.get("/logs/:sessionId", (req, res) => {
+  const { sessionId } = req.params;
+
+  console.log("LOGS ENDPOINT CALLED FOR:", sessionId);
+  console.log("SESSIONLOGS KEYS AT ENDPOINT:", [...sessionLogs.keys()]);
+
+  res.json(sessionLogs.get(sessionId) || []);
 });
 
 app.listen(3000, () => {
-  console.log("API HTTP en puerto 3000");
-
-  // Conectar a MQTT con delay (Swarm-friendly)
-  setTimeout(() => {
-    connectMQTT();
-  }, 5000);
+  console.log("API HTTP en 3000");
+  setTimeout(connectMQTT, 3000);
 });
 
-// Scheduler
-function assignTask(sessionId, query) {
-  const workerId = Object.keys(workers).find(
-    (w) => workers[w].status === "idle"
-  );
+/* ===================== Scheduler ===================== */
 
-  if (!workerId) {
-    log("No hay workers libres");
-    return;
+function tryAssignTasks() {
+  for (const [workerId, worker] of workers) {
+    if (worker.status !== "idle") continue;
+    if (pendingQueue.length === 0) break;
+
+    const task = pendingQueue.shift();
+    worker.status = "busy";
+
+    sessions.get(task.sessionId).status = "RUNNING";
+
+    logEvent({
+      sessionId: task.sessionId,
+      source: "master",
+      message: `Tarea enviada a ${workerId}`,
+    });
+
+    sendTask(workerId, task.sessionId, task.query);
+
+    if (pendingQueue.length > 0 && !hasIdleWorker()) {
+      logEvent({
+        sessionId: pendingQueue[0].sessionId,
+        source: "master",
+        message: "No hay workers disponibles, tarea en cola",
+      });
+    }
   }
+}
 
-  workers[workerId].status = "busy";
-
-  const task = {
+function sendTask(workerId, sessionId, query) {
+  const payload = {
     workerId,
     sessionId,
     query,
@@ -152,12 +220,5 @@ function assignTask(sessionId, query) {
     timestamp: Date.now(),
   };
 
-  mqttClient.publish("upb/workers/tasks", JSON.stringify(task));
-  log(`Tarea enviada a ${workerId}`);
-}
-
-// Logs
-function log(msg) {
-  console.log(msg);
-  mqttClient.publish("upb/logs", msg);
+  mqttClient.publish("upb/workers/tasks", JSON.stringify(payload));
 }
