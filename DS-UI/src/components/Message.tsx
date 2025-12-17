@@ -9,6 +9,9 @@ interface MessageProps {
 export function Message({ message, onReply }: MessageProps) {
   const isUser = message.role === "user";
 
+  const workerLogs = message.logs?.filter((l) => l.source === "worker") ?? [];
+  const masterLogs = message.logs?.filter((l) => l.source === "master") ?? [];
+
   const formatTime = (date: Date) => {
     return new Intl.DateTimeFormat("en-US", {
       hour: "numeric",
@@ -18,7 +21,12 @@ export function Message({ message, onReply }: MessageProps) {
   };
 
   return (
-    <div className={`flex gap-3 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
+    <div
+      className={`relative flex gap-3 ${
+        isUser ? "flex-row-reverse" : "flex-row"
+      }`}
+    >
+      {/* Avatar */}
       <div
         className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
           isUser ? "bg-gray-900" : "bg-gray-100"
@@ -30,8 +38,10 @@ export function Message({ message, onReply }: MessageProps) {
           <Bot className="w-4 h-4 text-gray-600" />
         )}
       </div>
+
+      {/* Burbuja + meta */}
       <div
-        className={`flex flex-col gap-1 max-w-[70%] ${
+        className={`relative flex flex-col gap-1 max-w-[70%] ${
           isUser ? "items-end" : "items-start"
         }`}
       >
@@ -64,28 +74,6 @@ export function Message({ message, onReply }: MessageProps) {
           </p>
         </div>
 
-        {message.logs && message.logs.length > 0 && (
-          <div
-            className={`mt-1 space-y-1 px-1 ${
-              isUser ? "text-right items-end" : "text-left items-start"
-            }`}
-          >
-            {message.logs.map((log, i) => (
-              <div
-                key={i}
-                className={`text-xs leading-snug ${
-                  log.source === "master" ? "text-gray-400" : "text-blue-400"
-                }`}
-              >
-                [{log.source}] {log.message}
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="text-red-500 text-xs">
-          DEBUG LOG COUNT: {message.logs?.length ?? 0}
-        </div>
-
         <div className="flex items-center gap-2 px-1">
           <span className="text-xs text-gray-400">
             {formatTime(message.timestamp)}
@@ -101,6 +89,28 @@ export function Message({ message, onReply }: MessageProps) {
           )}
         </div>
       </div>
+
+      {/* MASTER logs — Usuario → derecha */}
+      {isUser && masterLogs.length > 0 && (
+        <div className="absolute right-full ml-4 top-2 flex flex-col gap-1 text-xs text-gray-400 whitespace-nowrap">
+          {masterLogs.map((log, i) => (
+            <div key={i}>
+              [{log.source}] {log.message}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* WORKER logs — Asistente → izquierda */}
+      {!isUser && workerLogs.length > 0 && (
+        <div className="absolute left-full mr-4 top-2 flex flex-col gap-1 text-xs text-blue-400 text-left whitespace-nowrap">
+          {workerLogs.map((log, i) => (
+            <div key={i}>
+              [{log.source}] {log.message}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

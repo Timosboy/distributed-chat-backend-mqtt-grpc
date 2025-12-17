@@ -26,6 +26,7 @@ export interface Message {
 function startLogPolling(
   sessionId: string,
   messageId: string,
+  userMessageId: string,
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>
 ) {
   let stopped = false;
@@ -38,11 +39,17 @@ function startLogPolling(
 
       if (logs.length > 0) {
         setMessages((prev) =>
-          prev.map((msg) =>
-            msg.role === "assistant" && msg.status === "pending"
-              ? { ...msg, logs }
-              : msg
-          )
+          prev.map((msg) => {
+            // Asignar logs al mensaje del asistente (pending)
+            if (msg.id === messageId && msg.status === "pending") {
+              return { ...msg, logs };
+            }
+            // NUEVO: Asignar logs al mensaje del usuario también
+            if (msg.id === userMessageId) {
+              return { ...msg, logs };
+            }
+            return msg;
+          })
         );
       }
     } catch {}
@@ -108,6 +115,7 @@ export default function App() {
         const stopLogPolling = startLogPolling(
           sessionId,
           placeholderId,
+          userMessage.id,
           setMessages
         );
 
@@ -166,12 +174,14 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-white">
+    <div className="flex flex-col h-screen bg-white overflow-hidden">
       <ChatHeader title="ChatGPT" status={status} />
-      <MessageList
-        messages={messages}
-        onReply={(message) => setReplyTarget(message)}
-      />
+      <div className="flex-1 overflow-y-auto">
+        <MessageList
+          messages={messages}
+          onReply={(message) => setReplyTarget(message)}
+        />
+      </div>
       <ChatComposer
         onSend={handleSendMessage}
         replyTarget={replyTarget}
