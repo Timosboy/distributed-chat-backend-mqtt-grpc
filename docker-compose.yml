@@ -16,7 +16,7 @@ services:
         condition: any
 
   master:
-    image: 10.1.2.162:5000/master:v1
+    image: 10.1.2.162:5000/master:v3
     ports:
       - "3000:3000"
       - "50051:50051"
@@ -51,7 +51,7 @@ services:
         target: /app/proto/callback.proto
 
   frontend:
-    image: 10.1.2.162:5000/frontend:v9
+    image: 10.1.2.162:5000/frontend:v12
     ports:
       - "8888:80"
     networks:

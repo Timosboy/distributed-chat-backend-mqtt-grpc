@@ -109,12 +109,13 @@ const callbackPackage = grpcObj.callback;
 
 
 function SendResult(call, callback) {
-  const { sessionId, result, workerId } = call.request;
+  const { sessionId, query, result, workerId } = call.request;
 
   if (sessions.has(sessionId)) {
     sessions.set(sessionId, {
       ...sessions.get(sessionId),
 	      status: "DONE",
+      query,
       result,
     });
   }
