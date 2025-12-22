@@ -94,10 +94,19 @@ function connectMQTT() {
 
 /* ===================== gRPC ===================== */
 
-const protoPath = __dirname + "/../proto/callback.proto";
-const packageDef = protoLoader.loadSync(protoPath);
+const PROTO_PATH = "/app/proto/callback.proto";
+
+const packageDef = protoLoader.loadSync(PROTO_PATH, {
+  keepCase: true,
+  longs: String,
+  enums: String,
+  defaults: true,
+  oneofs: true,
+});
+
 const grpcObj = grpc.loadPackageDefinition(packageDef);
 const callbackPackage = grpcObj.callback;
+
 
 function SendResult(call, callback) {
   const { sessionId, result, workerId } = call.request;
@@ -105,7 +114,7 @@ function SendResult(call, callback) {
   if (sessions.has(sessionId)) {
     sessions.set(sessionId, {
       ...sessions.get(sessionId),
-      status: "DONE",
+	      status: "DONE",
       result,
     });
   }

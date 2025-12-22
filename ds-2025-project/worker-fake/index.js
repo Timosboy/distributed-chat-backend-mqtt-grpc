@@ -41,10 +41,19 @@ mqttClient.on("connect", () => {
 // =====================
 // gRPC client
 // =====================
-const protoPath = __dirname + "/../master/proto/callback.proto";
-const packageDef = protoLoader.loadSync(protoPath);
+const PROTO_PATH = "/app/proto/callback.proto";
+
+const packageDef = protoLoader.loadSync(PROTO_PATH, {
+  keepCase: true,
+  longs: String,
+  enums: String,
+  defaults: true,
+  oneofs: true,
+});
+
 const grpcObj = grpc.loadPackageDefinition(packageDef);
 const callbackPackage = grpcObj.callback;
+
 
 const grpcClient = new callbackPackage.CallbackService(
   GRPC_TARGET,
