@@ -40,11 +40,9 @@ function startLogPolling(
       if (logs.length > 0) {
         setMessages((prev) =>
           prev.map((msg) => {
-            // Asignar logs al mensaje del asistente (pending)
             if (msg.id === messageId && msg.status === "pending") {
               return { ...msg, logs };
             }
-            // NUEVO: Asignar logs al mensaje del usuario también
             if (msg.id === userMessageId) {
               return { ...msg, logs };
             }

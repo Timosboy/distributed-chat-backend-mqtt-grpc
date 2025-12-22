@@ -65,7 +65,7 @@ mqttClient.on("message", async (topic, message) => {
 
     emitLog(mqttClient, {
       sessionId,
-      message: "Tarea recibida",
+      message: "Tarea recibida del Master, comenzando procesamiento...",
     });
 
     // Marcar busy
@@ -81,7 +81,6 @@ mqttClient.on("message", async (topic, message) => {
 
     try {
       apiKey = fs.readFileSync("/run/secrets/openai_api_key", "utf8").trim();
-      console.log(apiKey);
       console.log("OpenAI API Key cargada desde Docker Secret");
     } catch (err) {
       console.error("No se pudo cargar la OpenAI API Key:", err.message);
@@ -89,7 +88,7 @@ mqttClient.on("message", async (topic, message) => {
 
     emitLog(mqttClient, {
       sessionId,
-      message: "Procesando consulta con OpenAI",
+      message: "Procesando consulta, esperando...",
     });
 
     result = await callOpenAI(apiKey, task.model, task.query);
@@ -119,6 +118,10 @@ mqttClient.on("message", async (topic, message) => {
     emitLog(mqttClient, {
       sessionId,
       message: "Resultado generado correctamente",
+    });
+    emitLog(mqttClient, {
+      sessionId,
+      message: "Enviado resultado de regreso al Master",
     });
 
     try {
