@@ -1,12 +1,16 @@
+import { getUserId } from "../utils/user";
+
 const BASE_URL = import.meta.env.VITE_MASTER_URL ?? "";
 
 export async function submitQuery(
   query: string
 ): Promise<{ sessionId: string }> {
+  const userId = getUserId();
+
   const res = await fetch(`${BASE_URL}/query`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query }),
+    body: JSON.stringify({ query, userId }),
   });
   if (!res.ok) throw new Error("submitQuery failed");
   return res.json();

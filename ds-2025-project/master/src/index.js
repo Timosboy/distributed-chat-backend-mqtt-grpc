@@ -18,7 +18,7 @@ const pendingQueue = [];
 
 let mqttClient = null;
 
-/* ===================== LOGS/NEW ===================== */
+/* ===================== LOGS ===================== */
 
 const sessionLogs = new Map();
 
@@ -63,12 +63,10 @@ function connectMQTT() {
     const data = JSON.parse(message.toString());
 
     if (topic === "upb/logs") {
-      const log = JSON.parse(message.toString());
-
       logEvent({
-        sessionId: log.sessionId,
-        source: log.source,
-        message: log.message,
+        sessionId: data.sessionId,
+        source: data.source,
+        message: data.message,
       });
     }
 
@@ -106,6 +104,7 @@ function SendResult(call, callback) {
 
   if (sessions.has(sessionId)) {
     sessions.set(sessionId, {
+      ...sessions.get(sessionId),
       status: "DONE",
       result,
     });
@@ -136,8 +135,11 @@ grpcServer.bindAsync(GRPC_ADDR, grpc.ServerCredentials.createInsecure(), () =>
 
 app.post("/query", (req, res) => {
   const id = uuidv4();
+  const { query, userId } = req.body;
+  const finalUserId = userId || "anonymous";
 
   sessions.set(id, {
+    userId: finalUserId,
     status: "PENDING",
     result: null,
   });
@@ -145,11 +147,12 @@ app.post("/query", (req, res) => {
   logEvent({
     sessionId: id,
     source: "master",
-    message: "Consulta recibida",
+    message: `Consulta recibida del usuario ${finalUserId}`,
   });
 
   pendingQueue.push({
     sessionId: id,
+    userId: finalUserId,
     query: req.body.query,
   });
 
@@ -195,10 +198,10 @@ function tryAssignTasks() {
     logEvent({
       sessionId: task.sessionId,
       source: "master",
-      message: `Tarea enviada a ${workerId}`,
+      message: `Tarea enviada a ${workerId} (user: ${task.userId})`,
     });
 
-    sendTask(workerId, task.sessionId, task.query);
+    sendTask(workerId, task.sessionId, task.userId, task.query);
 
     if (pendingQueue.length > 0 && !hasIdleWorker()) {
       logEvent({
@@ -210,10 +213,11 @@ function tryAssignTasks() {
   }
 }
 
-function sendTask(workerId, sessionId, query) {
+function sendTask(workerId, sessionId, userId, query) {
   const payload = {
     workerId,
     sessionId,
+    userId,
     query,
     model: "gpt-4.1-mini",
     grpcCallback: "master:50051",
@@ -221,4 +225,11 @@ function sendTask(workerId, sessionId, query) {
   };
 
   mqttClient.publish("upb/workers/tasks", JSON.stringify(payload));
+}
+
+function hasIdleWorker() {
+  for (const [, worker] of workers) {
+    if (worker.status === "idle") return true;
+  }
+  return false;
 }
