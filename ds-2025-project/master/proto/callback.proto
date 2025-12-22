@@ -9,11 +9,12 @@ service CallbackService {
 message ResultCallback {
   string workerId = 1;
   string sessionId = 2;
-  string query = 3;
-  string result = 4;
-  string apiKey = 5;
-  string duration = 6;
-  int64 timestamp = 7;
+  string userId = 3;
+  string query = 4;
+  string result = 5;
+  string apiKey = 6;
+  string duration = 7;
+  int64 timestamp = 8;
 }
 
 message Ack {
