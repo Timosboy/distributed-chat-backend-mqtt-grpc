@@ -1,14 +1,17 @@
 configs:
   callback_proto:
     external: true
+  mosquitto_conf:
+    external: true
 
 services:
   mosquitto:
     image: eclipse-mosquitto:2
     ports:
       - "1883:1883"
-    volumes:
-      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    configs:
+      - source: mosquitto_conf
+        target: /mosquitto/config/mosquitto.conf
     networks:
       - upb-network
     deploy:
@@ -16,7 +19,7 @@ services:
         condition: any
 
   master:
-    image: 10.1.2.162:5000/master:v3
+    image: 10.1.2.162:5000/master:v1
     ports:
       - "3000:3000"
       - "50051:50051"
@@ -33,7 +36,7 @@ services:
         target: /app/proto/callback.proto
 
   worker-fake:
-    image: 10.1.2.162:5000/worker-fake:v3
+    image: 10.1.2.162:5000/worker-fake:v1
     environment:
       WORKER_ID: worker-fake-1
       MQTT_BROKER: mqtt://mosquitto:1883
@@ -51,7 +54,7 @@ services:
         target: /app/proto/callback.proto
 
   frontend:
-    image: 10.1.2.162:5000/frontend:v12
+    image: 10.1.2.162:5000/frontend:v3
     ports:
       - "8888:80"
     networks:
